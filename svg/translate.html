@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SVG 动画处理器（方向平移）</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body {
+        font-family: "Inter", sans-serif;
+        background: linear-gradient(to bottom right, #f3f4f6, #e5e7eb);
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      .container {
+        background: white;
+        border-radius: 1rem;
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+        padding: 2rem;
+        max-width: 800px;
+        width: 100%;
+      }
+      .preview {
+        border: 2px dashed #d1d5db;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        min-height: 300px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      input[type="file"] {
+        color: transparent;
+      }
+      input[type="file"]::-webkit-file-upload-button {
+        margin-right: 1rem;
+        padding: 0.5rem 1rem;
+        border-radius: 9999px;
+        border: none;
+        font-size: 0.875rem;
+        font-weight: 600;
+        background-color: #e0e7ff;
+        color: #4f46e5;
+        cursor: pointer;
+      }
+      input[type="file"]::-webkit-file-upload-button:hover {
+        background-color: #c7d2fe;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1 class="text-2xl font-bold text-gray-800 mb-4 text-center">
+        SVG 动画处理器（方向平移）
+      </h1>
+      <h3 class="text-gray-500 mb-6 text-center text-yellow-500">
+        ⚠提示：在使用该工具处理的 SVG 文件之前，请先发送给开发人员检查下文件结构
+      </h3>
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-gray-700 mb-2"
+          >上传 SVG 文件</label
+        >
+        <div class="flex">
+          <label
+            class="block text-sm text-gray-500 py-2 px-4 rounded-full border-0 text-sm font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+          >
+            <span> 上传文件 </span>
+            <input type="file" id="svgInput" accept=".svg" hidden />
+          </label>
+          <span
+            id="fileName"
+            class="block ml-4 text-sm text-gray-600 mt-2"
+          ></span>
+        </div>
+      </div>
+      <div class="mb-6 grid grid-cols-2 gap-4">
+        <div>
+          <label
+            for="duration"
+            class="block text-sm font-medium text-gray-700 mb-2"
+            >动画时长（秒）</label
+          >
+          <input
+            type="number"
+            id="duration"
+            value="10"
+            min="0.1"
+            step="0.1"
+            class="w-full p-2 border rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+          />
+        </div>
+        <div>
+          <label
+            for="repeatCount"
+            class="block text-sm font-medium text-gray-700 mb-2"
+            >重复次数</label
+          >
+          <input
+            type="text"
+            id="repeatCount"
+            value="indefinite"
+            placeholder="例如：5 或 indefinite"
+            class="w-full p-2 border rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+          />
+        </div>
+        <div>
+          <label
+            for="direction"
+            class="block text-sm font-medium text-gray-700 mb-2"
+            >动画方向</label
+          >
+          <select
+            id="direction"
+            class="w-full p-2 border rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            <option value="left">左</option>
+            <option value="right">右</option>
+            <option value="up">上</option>
+            <option value="down">下</option>
+            <option value="up-left" selected>上左</option>
+            <option value="up-right">上右</option>
+            <option value="down-left">下左</option>
+            <option value="down-right">下右</option>
+          </select>
+        </div>
+      </div>
+      <div class="mb-6 flex justify-center">
+        <button
+          id="downloadBtn"
+          class="py-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+          disabled
+        >
+          下载处理后的 SVG
+        </button>
+      </div>
+      <div class="preview" id="preview">
+        <p class="text-gray-500">上传 SVG 文件以查看动画预览</p>
+      </div>
+    </div>
+
+    <script>
+      const svgInput = document.getElementById("svgInput");
+      const fileNameDisplay = document.getElementById("fileName");
+      const preview = document.getElementById("preview");
+      const durationInput = document.getElementById("duration");
+      const repeatCountInput = document.getElementById("repeatCount");
+      const directionInput = document.getElementById("direction");
+      const downloadBtn = document.getElementById("downloadBtn");
+      let processedSvgElement = null;
+      let lastSvgText = null;
+
+      const CAN_NOT_IN_G_TAG = [
+        "symbol",
+        "title",
+        "desc",
+        "script",
+        "style",
+        "defs",
+      ];
+
+      svgInput.addEventListener("change", handleFileUpload);
+      durationInput.addEventListener("input", refreshPreview);
+      repeatCountInput.addEventListener("input", refreshPreview);
+      directionInput.addEventListener("change", refreshPreview);
+      downloadBtn.addEventListener("click", downloadProcessedSVG);
+
+      function handleFileUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        preview.innerHTML = '<p class="text-gray-500">处理中...</p>';
+        fileNameDisplay.textContent = file.name;
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          lastSvgText = e.target.result;
+          processSVG(lastSvgText);
+        };
+        reader.readAsText(file);
+        event.target.value = "";
+      }
+
+      function parseSVG(svgText) {
+        const parser = new DOMParser();
+        const svgDoc = parser.parseFromString(svgText, "image/svg+xml");
+        const svgElement = svgDoc.querySelector("svg");
+        if (!svgElement) {
+          preview.innerHTML = '<p class="text-red-500">无效的 SVG 文件</p>';
+          fileNameDisplay.textContent = "无效的 SVG 文件";
+          return null;
+        }
+        return svgElement;
+      }
+
+      function generateRandomId() {
+        const letters = "abcdefghijklmnopqrstuvwxyz";
+        const chars = letters + "0123456789";
+        let id = letters[Math.floor(Math.random() * letters.length)];
+        for (let i = 0; i < 15; i++) {
+          id += chars[Math.floor(Math.random() * chars.length)];
+        }
+        return id;
+      }
+
+      function wrapInGroup(svgElement) {
+        const namespace = svgElement.namespaceURI || "http://www.w3.org/2000/svg";
+        let defsElement = svgElement.querySelector("defs");
+        if (!defsElement) {
+          defsElement = document.createElementNS(namespace, "defs");
+          svgElement.appendChild(defsElement);
+        }
+
+        const gElement = document.createElementNS(namespace, "g");
+        const randomId = generateRandomId();
+        gElement.setAttribute("id", randomId);
+
+        const children = Array.from(svgElement.children);
+        children.forEach((child) => {
+          if (!CAN_NOT_IN_G_TAG.includes(child.tagName.toLowerCase())) {
+            gElement.appendChild(child);
+          }
+        });
+
+        defsElement.appendChild(gElement);
+        return { gElement, randomId };
+      }
+
+      function createUseGroup(svgElement, groupId) {
+        const namespace = svgElement.namespaceURI || "http://www.w3.org/2000/svg";
+        const width = parseFloat(svgElement.getAttribute("width") || 550);
+        const height = parseFloat(svgElement.getAttribute("height") || 550);
+        const useGroup = document.createElementNS(namespace, "g");
+        const direction = directionInput.value;
+        const isSingleDirection = ["left", "right", "up", "down"].includes(direction);
+
+        if (isSingleDirection) {
+          // 单一方向：创建两个 <use>
+          const use1 = document.createElementNS(namespace, "use");
+          use1.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", `#${groupId}`);
+          use1.setAttribute("x", "0");
+          use1.setAttribute("y", "0");
+
+          const use2 = document.createElementNS(namespace, "use");
+          use2.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", `#${groupId}`);
+
+          if (direction === "left") {
+            use2.setAttribute("x", width);
+            use2.setAttribute("y", "0");
+          } else if (direction === "right") {
+            use2.setAttribute("x", -width);
+            use2.setAttribute("y", "0");
+          } else if (direction === "up") {
+            use2.setAttribute("x", "0");
+            use2.setAttribute("y", height);
+          } else if (direction === "down") {
+            use2.setAttribute("x", "0");
+            use2.setAttribute("y", -height);
+          }
+
+          useGroup.appendChild(use1);
+          use1.insertAdjacentElement("afterend", use2);
+        } else {
+          // 对角方向：创建四个 <use>
+          const use1 = document.createElementNS(namespace, "use");
+          use1.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", `#${groupId}`);
+          use1.setAttribute("x", "0");
+          use1.setAttribute("y", "0");
+
+          const use2 = document.createElementNS(namespace, "use");
+          use2.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", `#${groupId}`);
+          const use3 = document.createElementNS(namespace, "use");
+          use3.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", `#${groupId}`);
+          const use4 = document.createElementNS(namespace, "use");
+          use4.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", `#${groupId}`);
+
+          if (direction === "up-left") {
+            use2.setAttribute("x", width);
+            use2.setAttribute("y", "0");
+            use3.setAttribute("x", "0");
+            use3.setAttribute("y", height);
+            use4.setAttribute("x", width);
+            use4.setAttribute("y", height);
+          } else if (direction === "up-right") {
+            use2.setAttribute("x", -width);
+            use2.setAttribute("y", "0");
+            use3.setAttribute("x", "0");
+            use3.setAttribute("y", height);
+            use4.setAttribute("x", -width);
+            use4.setAttribute("y", height);
+          } else if (direction === "down-left") {
+            use2.setAttribute("x", width);
+            use2.setAttribute("y", "0");
+            use3.setAttribute("x", "0");
+            use3.setAttribute("y", -height);
+            use4.setAttribute("x", width);
+            use4.setAttribute("y", -height);
+          } else if (direction === "down-right") {
+            use2.setAttribute("x", -width);
+            use2.setAttribute("y", "0");
+            use3.setAttribute("x", "0");
+            use3.setAttribute("y", -height);
+            use4.setAttribute("x", -width);
+            use4.setAttribute("y", -height);
+          }
+
+          useGroup.appendChild(use1);
+          use1.insertAdjacentElement("afterend", use2);
+          use2.insertAdjacentElement("afterend", use3);
+          use3.insertAdjacentElement("afterend", use4);
+        }
+
+        applyAnimation(useGroup, width, height);
+
+        svgElement.appendChild(useGroup);
+        return useGroup;
+      }
+
+      function applyAnimation(targetElement, width, height) {
+        const namespace = targetElement.namespaceURI || "http://www.w3.org/2000/svg";
+        const animateTransform = document.createElementNS(namespace, "animateTransform");
+        animateTransform.setAttribute("attributeType", "xml");
+        animateTransform.setAttribute("attributeName", "transform");
+        animateTransform.setAttribute("type", "translate");
+        animateTransform.setAttribute("from", "0 0");
+
+        const direction = directionInput.value;
+        let to;
+        switch (direction) {
+          case "left":
+            to = `-${width} 0`;
+            break;
+          case "right":
+            to = `${width} 0`;
+            break;
+          case "up":
+            to = `0 -${height}`;
+            break;
+          case "down":
+            to = `0 ${height}`;
+            break;
+          case "up-left":
+            to = `-${width} -${height}`;
+            break;
+          case "up-right":
+            to = `${width} -${height}`;
+            break;
+          case "down-left":
+            to = `-${width} ${height}`;
+            break;
+          case "down-right":
+            to = `${width} ${height}`;
+            break;
+          default:
+            to = `-${width} -${height}`; // 默认上左
+        }
+
+        animateTransform.setAttribute("to", to);
+        animateTransform.setAttribute("dur", `${durationInput.value}s`);
+        animateTransform.setAttribute("repeatCount", repeatCountInput.value || "indefinite");
+        targetElement.insertBefore(animateTransform, targetElement.firstChild);
+      }
+
+      function sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      async function processSVG(svgText) {
+        const svgElement = parseSVG(svgText);
+        if (!svgElement) return;
+
+        const { randomId } = wrapInGroup(svgElement);
+        createUseGroup(svgElement, randomId);
+
+        await sleep(1000);
+
+        processedSvgElement = svgElement;
+        preview.innerHTML = "";
+        preview.appendChild(svgElement);
+        downloadBtn.disabled = false;
+      }
+
+      function refreshPreview() {
+        if (lastSvgText) {
+          processSVG(lastSvgText);
+        }
+      }
+
+      function downloadProcessedSVG() {
+        if (!processedSvgElement) return;
+
+        const serializer = new XMLSerializer();
+        const svgString = serializer.serializeToString(processedSvgElement);
+        const blob = new Blob([svgString], { type: "image/svg+xml" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "processed_animation.svg";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    </script>
+  </body>
+</html>
