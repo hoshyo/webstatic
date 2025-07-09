@@ -2,7 +2,7 @@
 
 WebStatic 是静态网页集合，提供一些实用的工具或网站
 
-仓库地址：[GitHub](https://github.com/hoshyo/webstatic)
+[GitHub 仓库地址](https://github.com/hoshyo/webstatic)
 
 ## tools
 - [tools/svg/rotate.html](/tools/svg/rotate.html) - 为 SVG 添加旋转动画
