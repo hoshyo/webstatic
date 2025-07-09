@@ -1,6 +1,6 @@
 # webstatic
 
-[WebStatic](https://webstatic.hoshyo.com) 是工具集合，目前包含以下工具：
+WebStatic 是静态网页集合，提供一些实用的工具或网站
 
 仓库地址：[GitHub](https://github.com/hoshyo/webstatic)
 
